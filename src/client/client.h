@@ -581,7 +581,8 @@ typedef struct
 	byte textColor[CON_TEXTSIZE];
 	int current;            // line where next message will be printed
 	int x;                  // offset in current line for next print
-	int display;            // bottom of console displays this line
+	int scrollline;         // bottom of console displays this line (current)
+	int display;            // bottom of console displays this line (final)
 
 	int linewidth;          // characters across screen
 	int totallines;         // total text filled lines in console scrollback

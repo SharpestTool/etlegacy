@@ -83,7 +83,7 @@ void Con_ToggleConsole_f(void)
 		// full console
 		else if (keys[K_ALT].down)
 		{
-			con.desiredFrac = 1.0;
+			con.desiredFrac = 1.0f;
 		}
 		// normal half-screen console
 		else
@@ -254,6 +254,8 @@ void Con_CheckResize(void)
 			con.textColor[i] = ColorIndex(CONSOLE_COLOR);
 		}
 
+		//con.totallines = 0;
+
 		for (i = 0 ; i < numlines ; i++)
 		{
 			for (j = 0 ; j < numchars ; j++)
@@ -266,10 +268,12 @@ void Con_CheckResize(void)
 				           oldtotallines) * oldwidth + j];
 			}
 		}
+		//con.totallines = numlines;
 	}
 
 	con.current = con.maxtotallines - 1;
 	con.display = con.current;
+	con.scrollline = con.current;
 }
 
 /**
@@ -325,9 +329,9 @@ void Con_Linefeed(void)
 	int i;
 	con.x = 0;
 
-	if (con.display == con.current)
+	if (con.scrollline >= con.current)
 	{
-		con.display++;
+		con.scrollline++;
 	}
 
 	con.current++;
@@ -471,6 +475,28 @@ void Con_DrawVersion(void)
 		SCR_DrawSmallChar(cls.glconfig.vidWidth - (i - x + 1) * SMALLCHAR_WIDTH,
 		                  con.scanlines - 1.25f * SMALLCHAR_HEIGHT, version[x]);
 	}
+
+}
+
+void Con_DrawDebug(void)
+{
+	// debug
+	int  x, i;
+	char buffer[256];
+
+	re.SetColor(g_color_table[ColorIndex(COLOR_YELLOW)]);
+
+	Com_sprintf(buffer, sizeof(buffer), "Total %d/%d Current %d Scroll %d Display %d to %d (%d) (%d lines/%ipx)",
+		con.totallines, con.maxtotallines, con.current, con.scrollline,
+		con.display-con.vislines, con.display, con.scrollline-con.display, con.vislines, SMALLCHAR_HEIGHT);
+
+	i = strlen(buffer);
+
+	for (x = 0 ; x < i ; x++)
+	{
+		SCR_DrawSmallChar(cls.glconfig.vidWidth - (i - x + 1) * SMALLCHAR_WIDTH,
+		                  con.scanlines - 1.25f * SMALLCHAR_HEIGHT, buffer[x]);
+	}
 }
 
 /**
@@ -610,7 +636,8 @@ void Con_DrawSolidConsole(float frac)
 	// draw scrollbar
 	Con_DrawScrollbar(y - 1.5f * SMALLCHAR_HEIGHT, SCREEN_WIDTH - 5, 3);
 	// draw the version number
-	Con_DrawVersion();
+	//Con_DrawVersion();
+	Con_DrawDebug();
 
 	// draw text
 	con.vislines = (con.scanlines - SMALLCHAR_HEIGHT) / SMALLCHAR_HEIGHT - 1;  // rows of text to draw
@@ -618,7 +645,7 @@ void Con_DrawSolidConsole(float frac)
 	y = con.scanlines - 3 * SMALLCHAR_HEIGHT;
 
 	// draw from the bottom up
-	if (con.display < con.current - 1)
+	if (con.scrollline < con.current - 1)
 	{
 		// draw arrows to show the buffer is backscrolled
 		re.SetColor(g_color_table[ColorIndex(COLOR_WHITE)]);
@@ -706,9 +733,9 @@ void Con_RunConsole(void)
 	}
 	else
 	{
-		con.finalFrac = 0;  // none visible
-
+		con.finalFrac = 0.0f;  // none visible
 	}
+
 	// scroll towards the destination height
 	if (con.finalFrac < con.displayFrac)
 	{
@@ -718,7 +745,6 @@ void Con_RunConsole(void)
 		{
 			con.displayFrac = con.finalFrac;
 		}
-
 	}
 	else if (con.finalFrac > con.displayFrac)
 	{
@@ -729,19 +755,49 @@ void Con_RunConsole(void)
 			con.displayFrac = con.finalFrac;
 		}
 	}
+
+	// animated scroll
+	if (con.displayFrac > 0)
+	{
+		const int scrolldiff = abs(con.scrollline - con.display);
+
+		if (con.display < con.scrollline)
+		{
+			con.display += con_conspeed->value * cls.realFrametime * 0.005 * scrolldiff;
+
+			if (con.display > con.scrollline)
+			{
+				con.display = con.scrollline;
+			}
+		}
+		else if (con.display > con.scrollline)
+		{
+			con.display -= con_conspeed->value * cls.realFrametime * 0.005 * scrolldiff;
+
+			if (con.display < con.scrollline)
+			{
+				con.display = con.scrollline;
+			}
+		}
+	}
+	else
+	{
+		//con.display = con.scrollline;
+	}
 }
+
 
 /**
  * @brief Page up
  */
 void Con_PageUp(void)
 {
-	con.display -= 2;
+	con.scrollline -= con.vislines / 2;
 
-	if (con.current - con.display > con.totallines - con.vislines)
-	{
-		con.display = con.current - con.totallines + con.vislines;
-	}
+	// if (con.scrollline < con.current - con.totallines + con.vislines)
+	// {
+	// 	con.scrollline = con.current - con.totallines + con.vislines;
+	// }
 }
 
 /**
@@ -749,12 +805,12 @@ void Con_PageUp(void)
  */
 void Con_PageDown(void)
 {
-	con.display += 2;
+	con.scrollline += con.vislines / 2;
 
-	if (con.display > con.current)
-	{
-		con.display = con.current;
-	}
+	// if (con.scrollline > con.current)
+	// {
+	// 	con.scrollline = con.current;
+	// }
 }
 
 /**
@@ -762,12 +818,12 @@ void Con_PageDown(void)
  */
 void Con_Top(void)
 {
-	con.display = con.totallines;
+	con.scrollline = con.current - con.totallines + con.vislines;
 
-	if (con.current - con.display > con.totallines - con.vislines)
-	{
-		con.display = con.current - con.totallines + con.vislines;
-	}
+	// if (con.scrollline < con.current - con.totallines + con.vislines)
+	// {
+	// 	con.scrollline = con.current - con.totallines + con.vislines;
+	// }
 }
 
 /**
@@ -775,7 +831,7 @@ void Con_Top(void)
  */
 void Con_Bottom(void)
 {
-	con.display = con.current;
+	con.scrollline = con.current;
 }
 
 /**
